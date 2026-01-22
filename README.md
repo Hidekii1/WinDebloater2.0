@@ -44,9 +44,9 @@ WinDebloater is an open-source tool designed to remove unnecessary preinstalled 
 
 ## 🚀 Instalación Rápida | Quick Installation
 
-Descargar y descomprimir el zip y ejecutar el .exe
+Descargar y ejecutar el .exe
 
-Download and unzip the zip and run the .exe
+Download and run the .exe
 
 > [!NOTE]
 > Este proyecto está en desarrollo. ¡Contribuciones y sugerencias son bienvenidas!
