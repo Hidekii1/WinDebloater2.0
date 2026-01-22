@@ -1,75 +1,98 @@
-// Módulo para restauración
+// Módulo para restaurar cambios
+use crate::utils::{
+    enable_scheduled_task, enable_service, print_error, print_header, print_info, print_success,
+    run_powershell,
+};
 use std::process::Command;
 
+/// Servicios a restaurar
+const SERVICES_TO_RESTORE: &[&str] = &["DiagTrack", "dmwappushservice", "WMPNetworkSvc", "SysMain"];
+
+/// Tareas programadas a restaurar
+const TASKS_TO_RESTORE: &[&str] = &[
+    "\\Microsoft\\Windows\\Customer Experience Improvement Program\\Consolidator",
+    "\\Microsoft\\Windows\\Customer Experience Improvement Program\\UsbCeip",
+    "\\Microsoft\\Windows\\Application Experience\\ProgramDataUpdater",
+    "\\Microsoft\\Windows\\Application Experience\\Microsoft Compatibility Appraiser",
+];
+
 pub fn run_restore() {
-    println!("[Restauración] Revirtiendo cambios realizados por el debloater...");
+    print_header("Restauración");
+    print_info("Revirtiendo cambios realizados por WinDebloater...\n");
 
-    // Restaurar servicios de telemetría
-    let services = [
-        "DiagTrack",
-        "dmwappushservice",
-        "WMPNetworkSvc",
-    ];
-    for service in &services {
-        let output = Command::new("powershell")
-            .args(["-Command", &format!("Set-Service -Name '{}' -StartupType Automatic; Start-Service -Name '{}'", service, service)])
-            .output();
-        match output {
-            Ok(o) if o.status.success() => println!("  Servicio '{}' restaurado.", service),
-            Ok(o) => println!("  No se pudo restaurar '{}': {}", service, String::from_utf8_lossy(&o.stderr)),
-            Err(e) => println!("  Error al intentar restaurar '{}': {}", service, e),
-        }
+    // Restaurar servicios
+    print_info("Restaurando servicios...");
+    for service in SERVICES_TO_RESTORE {
+        enable_service(service);
     }
 
-    // Restaurar tareas programadas de telemetría
-    let tasks = [
-        "\\Microsoft\\Windows\\Customer Experience Improvement Program\\Consolidator",
-        "\\Microsoft\\Windows\\Customer Experience Improvement Program\\UsbCeip",
-        "\\Microsoft\\Windows\\Application Experience\\ProgramDataUpdater",
-    ];
-    for task in &tasks {
-        let output = Command::new("powershell")
-            .args(["-Command", &format!("Enable-ScheduledTask -TaskName '{}' -ErrorAction SilentlyContinue", task)])
-            .output();
-        match output {
-            Ok(o) if o.status.success() => println!("  Tarea '{}' restaurada.", task),
-            Ok(o) => println!("  No se pudo restaurar tarea '{}': {}", task, String::from_utf8_lossy(&o.stderr)),
-            Err(e) => println!("  Error al intentar restaurar tarea '{}': {}", task, e),
-        }
+    println!();
+
+    // Restaurar tareas programadas
+    print_info("Restaurando tareas programadas...");
+    for task in TASKS_TO_RESTORE {
+        enable_scheduled_task(task);
     }
+
+    println!();
 
     // Restaurar telemetría en el registro
-    let reg_cmd = "Set-ItemProperty -Path 'HKLM:SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection' -Name 'AllowTelemetry' -Value 1 -Force";
-    let reg_output = Command::new("powershell")
-        .args(["-Command", reg_cmd])
-        .output();
-    match reg_output {
-        Ok(o) if o.status.success() => println!("  Telemetría restaurada en el registro."),
-        Ok(o) => println!("  No se pudo restaurar el registro: {}", String::from_utf8_lossy(&o.stderr)),
-        Err(e) => println!("  Error al restaurar el registro: {}", e),
+    print_info("Restaurando configuración de telemetría...");
+    let telemetry_cmd = "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection' -Name 'AllowTelemetry' -Value 3 -Force";
+    match run_powershell(telemetry_cmd) {
+        Ok(_) => print_success("Telemetría restaurada"),
+        Err(e) if e.is_empty() => print_success("Telemetría restaurada"),
+        Err(e) => print_error(&format!("Error restaurando telemetría: {}", e.trim())),
     }
 
-    // Restaurar animaciones visuales
-    let anim_cmd = "Set-ItemProperty -Path 'HKCU:Control Panel\\Desktop' -Name 'UserPreferencesMask' -Value ([byte[]](0x9e,0x3e,0x07,0x80,0x12,0x00,0x00,0x00))";
-    let anim_output = Command::new("powershell")
-        .args(["-Command", anim_cmd])
-        .output();
-    match anim_output {
-        Ok(o) if o.status.success() => println!("  Animaciones visuales restauradas."),
-        Ok(o) => println!("  No se pudo restaurar animaciones: {}", String::from_utf8_lossy(&o.stderr)),
-        Err(e) => println!("  Error al restaurar animaciones: {}", e),
+    // Restaurar animaciones
+    print_info("Restaurando efectos visuales...");
+    let anim_cmd = r#"
+        Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'UserPreferencesMask' -Value ([byte[]](0x9e,0x3e,0x07,0x80,0x12,0x00,0x00,0x00)) -Force
+        Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop\WindowMetrics' -Name 'MinAnimate' -Value '1' -Force
+        Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'TaskbarAnimations' -Value 1 -Force
+        Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name 'VisualFXSetting' -Value 0 -Force
+    "#;
+    match run_powershell(anim_cmd) {
+        Ok(_) => print_success("Efectos visuales restaurados"),
+        Err(e) if e.is_empty() => print_success("Efectos visuales restaurados"),
+        Err(e) => print_error(&format!("Error en efectos visuales: {}", e.trim())),
     }
 
     // Restaurar inicio rápido
-    let fastboot_cmd = "powercfg /hibernate on";
-    let fastboot_output = Command::new("powershell")
-        .args(["-Command", fastboot_cmd])
-        .output();
-    match fastboot_output {
-        Ok(o) if o.status.success() => println!("  Inicio rápido restaurado."),
-        Ok(o) => println!("  No se pudo restaurar inicio rápido: {}", String::from_utf8_lossy(&o.stderr)),
-        Err(e) => println!("  Error al restaurar inicio rápido: {}", e),
+    match run_powershell("powercfg /hibernate on") {
+        Ok(_) => print_success("Inicio rápido restaurado"),
+        Err(_) => {}
     }
 
-    println!("[Restauración] Proceso completado.");
+    // Restaurar menú contextual de Windows 11
+    print_info("Restaurando menú contextual de Windows 11...");
+    let result = Command::new("reg")
+        .args([
+            "delete",
+            "HKCU\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}",
+            "/f",
+        ])
+        .output();
+    match result {
+        Ok(o) if o.status.success() => print_success("Menú contextual de Windows 11 restaurado"),
+        _ => print_info("Menú contextual ya estaba en configuración por defecto"),
+    }
+
+    // Restaurar configuración de barra de tareas
+    print_info("Restaurando barra de tareas...");
+    let taskbar_restore = r#"
+        Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'TaskbarDa' -Value 1 -Force
+        Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'TaskbarMn' -Value 1 -Force
+        Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowTaskViewButton' -Value 1 -Force
+        Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'TaskbarAl' -Value 1 -Force
+    "#;
+    match run_powershell(taskbar_restore) {
+        Ok(_) => print_success("Barra de tareas restaurada"),
+        Err(e) if e.is_empty() => print_success("Barra de tareas restaurada"),
+        Err(e) => print_error(&format!("Error en barra de tareas: {}", e.trim())),
+    }
+
+    println!("\n  Restauración completada.");
+    print_info("Reinicia el sistema para aplicar todos los cambios.");
 }

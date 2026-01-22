@@ -1,6 +1,10 @@
 [package]
 name = "WinDebloaterOfficial"
-version = "0.1.0"
-edition = "2024"
+version = "2.0.0"
+edition = "2021"
+description = "Herramienta CLI para optimizar Windows eliminando bloatware y mejorando privacidad"
+authors = ["Oscar"]
 
 [dependencies]
+colored = "2"
+anyhow = "1"
